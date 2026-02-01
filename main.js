@@ -111,13 +111,18 @@ function downloadToFile(url, filepath, options = {}) {
 
             response.on('data', (chunk) => {
                 receivedBytes += chunk.length;
-                if (receivedBytes > maxSizeBytes) {
+            let rejected = false;
+            response.on('data', (chunk) => {
+                receivedBytes += chunk.length;
+                if (!rejected && receivedBytes > maxSizeBytes) {
+                    rejected = true;
                     response.destroy();
                     file.close(() => {
                         fs.unlink(filepath, () => {});
                     });
                     reject(new Error(`File size exceeds limit of ${maxSizeBytes} bytes`));
                 }
+            });
             });
 
             response.pipe(file);
