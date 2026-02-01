@@ -109,8 +109,6 @@ function downloadToFile(url, filepath, options = {}) {
             const file = fs.createWriteStream(filepath);
             let receivedBytes = 0;
 
-            response.on('data', (chunk) => {
-                receivedBytes += chunk.length;
             let rejected = false;
             response.on('data', (chunk) => {
                 receivedBytes += chunk.length;
@@ -122,7 +120,6 @@ function downloadToFile(url, filepath, options = {}) {
                     });
                     reject(new Error(`File size exceeds limit of ${maxSizeBytes} bytes`));
                 }
-            });
             });
 
             response.pipe(file);
@@ -182,9 +179,11 @@ function copyFileToClipboard(filePath) {
         } else if (process.platform === 'darwin') {
             const { exec } = require('child_process');
             // Use AppleScript to set clipboard to POSIX file
-            const safePath = filePath.replace(/"/g, '\\"');
+            // Properly escape the path for AppleScript by using \x22 for quotes
+            const safePath = filePath.replace(/"/g, '\\x22');
+            // Use printf-style escaping to avoid shell injection
             const script = `set the clipboard to POSIX file "${safePath}"`;
-            exec(`osascript -e '${script}'`, { timeout: 10000 }, (error) => {
+            exec(`osascript -e "${script}"`, { timeout: 10000 }, (error) => {
                 if (error) {
                     resolve({ success: false, message: error.message });
                 } else {
