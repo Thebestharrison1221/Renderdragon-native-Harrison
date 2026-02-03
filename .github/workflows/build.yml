@@ -1,0 +1,54 @@
+name: Build/Release
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+
+jobs:
+  build:
+    name: Build on ${{ matrix.os }}
+    # To use Blacksmith, you would replace the standard runners with Blacksmith runners.
+    # For example:
+    #   ubuntu-latest -> blacksmith-2vcpu-ubuntu-2204
+    #   windows-latest -> blacksmith-2vcpu-windows
+    #   macos-latest -> blacksmith-4vcpu-macos-14 (Apple Silicon) or standard macos-latest
+    # Note: You must have the Blacksmith app installed on your GitHub organization/repo for this to work.
+    
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Build Electron App
+        run: npm run build
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # This step uploads the artifacts (installers) so you can download them from the GitHub Action run.
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.os }}-build
+          path: |
+            dist/*.exe
+            dist/*.dmg
+            dist/*.zip
+            dist/*.AppImage
+            dist/*.deb
+          if-no-files-found: warn
