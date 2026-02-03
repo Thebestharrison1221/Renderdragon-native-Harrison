@@ -116,7 +116,7 @@ function downloadToFile(url, filepath, options = {}) {
                     rejected = true;
                     response.destroy();
                     file.close(() => {
-                        fs.unlink(filepath, () => {});
+                        fs.unlink(filepath, () => { });
                     });
                     reject(new Error(`File size exceeds limit of ${maxSizeBytes} bytes`));
                 }
@@ -130,19 +130,19 @@ function downloadToFile(url, filepath, options = {}) {
             });
 
             file.on('error', (err) => {
-                fs.unlink(filepath, () => {});
+                fs.unlink(filepath, () => { });
                 reject(err);
             });
         });
 
         request.on('timeout', () => {
             request.destroy();
-            fs.unlink(filepath, () => {});
+            fs.unlink(filepath, () => { });
             reject(new Error('Request timed out'));
         });
 
         request.on('error', (err) => {
-            fs.unlink(filepath, () => {});
+            fs.unlink(filepath, () => { });
             reject(err);
         });
 
