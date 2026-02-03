@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="Content-Security-Policy"
-        content="default-src 'self'; script-src 'self' 'unsafe-inline' https://unpkg.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; media-src 'self' https:; connect-src https://hamburger-api.powernplant101-c6b.workers.dev https://raw.githubusercontent.com">
+        content="default-src 'self'; script-src 'self' 'unsafe-inline' https://unpkg.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; media-src 'self' https:; font-src 'self' https://raw.githubusercontent.com; connect-src https://hamburger-api.powernplant101-c6b.workers.dev https://raw.githubusercontent.com">
     <title>RenderDragon Assets</title>
     <link rel="stylesheet" href="styles.css">
 </head>
@@ -22,6 +22,15 @@
                 </svg>
                 <input type="text" id="searchInput" placeholder="Search assets... (use !M for music, !S for sfx, etc.)"
                     autofocus>
+                <button class="settings-btn" id="settingsBtn" title="Settings">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none"
+                        stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path
+                            d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z">
+                        </path>
+                        <circle cx="12" cy="12" r="3"></circle>
+                    </svg>
+                </button>
                 <button class="close-btn" id="closeBtn" title="Close (Esc)">
                     <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none"
                         stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -125,6 +134,77 @@
                     <path d="M21 12a9 9 0 1 1-6.219-8.56"></path>
                 </svg>
                 Loading more...
+            </div>
+        </div>
+    </div>
+
+    <!-- Settings Modal -->
+    <div class="settings-modal" id="settingsModal">
+        <div class="settings-panel">
+            <div class="settings-header">
+                <h2>Settings</h2>
+                <button class="settings-close-btn" id="settingsCloseBtn">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
+                        stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M18 6 6 18"></path>
+                        <path d="m6 6 12 12"></path>
+                    </svg>
+                </button>
+            </div>
+
+            <div class="settings-content">
+                <!-- Button Visibility Section -->
+                <div class="settings-section">
+                    <h3>Tile Buttons</h3>
+                    <p class="settings-description">Choose which buttons to show on asset tiles</p>
+                    <div class="settings-checkboxes">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="showPreviewBtn" checked>
+                            <span class="checkbox-custom"></span>
+                            Preview
+                        </label>
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="showCopyBtn" checked>
+                            <span class="checkbox-custom"></span>
+                            Copy
+                        </label>
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="showDownloadBtn" checked>
+                            <span class="checkbox-custom"></span>
+                            Download
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Default Category Section -->
+                <div class="settings-section">
+                    <h3>Default Category</h3>
+                    <p class="settings-description">Category to show when app starts</p>
+                    <select id="defaultCategory" class="settings-select">
+                        <option value="all">All</option>
+                        <option value="animations">Animations</option>
+                        <option value="fonts">Fonts</option>
+                        <option value="images">Images</option>
+                        <option value="mcicons">MC Icons</option>
+                        <option value="music">Music</option>
+                        <option value="presets">Presets</option>
+                        <option value="sfx">SFX</option>
+                    </select>
+                </div>
+
+                <!-- Grid Columns Section -->
+                <div class="settings-section">
+                    <h3>Grid Columns</h3>
+                    <p class="settings-description">Number of tiles per row</p>
+                    <div class="slider-container">
+                        <input type="range" id="gridColumns" min="0" max="6" value="0" class="settings-slider">
+                        <span id="gridColumnsValue" class="slider-value">Auto</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="settings-footer">
+                <button class="settings-save-btn" id="settingsSaveBtn">Save Settings</button>
             </div>
         </div>
     </div>

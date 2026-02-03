@@ -22,6 +22,17 @@ let isLoading = false;
 let searchTimeout = null;
 let focusedIndex = -1;
 
+// ===== Settings =====
+const SETTINGS_KEY = 'renderdragon_settings';
+const DEFAULT_SETTINGS = {
+    showPreviewBtn: true,
+    showCopyBtn: true,
+    showDownloadBtn: true,
+    defaultCategory: 'all',
+    gridColumns: 0 // 0 = auto
+};
+let settings = { ...DEFAULT_SETTINGS };
+
 // ===== DOM Elements =====
 const searchInput = document.getElementById('searchInput');
 const closeBtn = document.getElementById('closeBtn');
@@ -35,8 +46,22 @@ const previewContent = document.getElementById('previewContent');
 const previewClose = document.getElementById('previewClose');
 const goTopBtn = document.getElementById('goTopBtn');
 
+// Settings elements
+const settingsBtn = document.getElementById('settingsBtn');
+const settingsModal = document.getElementById('settingsModal');
+const settingsCloseBtn = document.getElementById('settingsCloseBtn');
+const settingsSaveBtn = document.getElementById('settingsSaveBtn');
+const showPreviewBtnCheck = document.getElementById('showPreviewBtn');
+const showCopyBtnCheck = document.getElementById('showCopyBtn');
+const showDownloadBtnCheck = document.getElementById('showDownloadBtn');
+const defaultCategorySelect = document.getElementById('defaultCategory');
+const gridColumnsSlider = document.getElementById('gridColumns');
+const gridColumnsValue = document.getElementById('gridColumnsValue');
+
 // ===== Initialize =====
 document.addEventListener('DOMContentLoaded', () => {
+    loadSettings();
+    applySettings();
     fetchAllAssets();
     setupEventListeners();
 });
@@ -174,6 +199,41 @@ function createAssetTile(asset) {
     const previewHtml = getPreviewHtml(asset);
     const sizeText = formatSize(asset.size);
 
+    // Build buttons HTML based on settings
+    let buttonsHtml = '';
+    if (settings.showPreviewBtn) {
+        buttonsHtml += `
+      <button class="action-btn preview-btn" title="Preview">
+        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"></path>
+          <circle cx="12" cy="12" r="3"></circle>
+        </svg>
+      </button>`;
+    }
+    if (settings.showCopyBtn) {
+        buttonsHtml += `
+      <button class="action-btn copy-btn" title="Copy to Clipboard">
+        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect width="14" height="14" x="8" y="8" rx="2" ry="2"></rect>
+          <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path>
+        </svg>
+      </button>`;
+    }
+    if (settings.showDownloadBtn) {
+        buttonsHtml += `
+      <button class="action-btn download-btn" title="Download">
+        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+          <polyline points="7 10 12 15 17 10"></polyline>
+          <line x1="12" x2="12" y1="15" y2="3"></line>
+        </svg>
+      </button>`;
+    }
+
+    // Check if we have any buttons to show
+    const hasButtons = settings.showPreviewBtn || settings.showCopyBtn || settings.showDownloadBtn;
+    const actionsHtml = hasButtons ? `<div class="asset-actions">${buttonsHtml}</div>` : '';
+
     tile.innerHTML = `
     <div class="asset-preview">
       ${previewHtml}
@@ -185,48 +245,33 @@ function createAssetTile(asset) {
         <span class="asset-size">${sizeText}</span>
       </div>
     </div>
-    <div class="asset-actions">
-      <button class="action-btn preview-btn" title="Preview">
-        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"></path>
-          <circle cx="12" cy="12" r="3"></circle>
-        </svg>
-      </button>
-      <button class="action-btn copy-btn" title="Copy to Clipboard">
-        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <rect width="14" height="14" x="8" y="8" rx="2" ry="2"></rect>
-          <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path>
-        </svg>
-      </button>
-      <button class="action-btn download-btn" title="Download">
-        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-          <polyline points="7 10 12 15 17 10"></polyline>
-          <line x1="12" x2="12" y1="15" y2="3"></line>
-        </svg>
-      </button>
-    </div>
+    ${actionsHtml}
   `;
 
-    // Event listeners
-    const previewBtn = tile.querySelector('.preview-btn');
-    const copyBtn = tile.querySelector('.copy-btn');
-    const downloadBtn = tile.querySelector('.download-btn');
+    // Event listeners - only for visible buttons
+    if (settings.showPreviewBtn) {
+        const previewBtn = tile.querySelector('.preview-btn');
+        previewBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            showPreview(asset);
+        });
+    }
 
-    previewBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        showPreview(asset);
-    });
+    if (settings.showCopyBtn) {
+        const copyBtn = tile.querySelector('.copy-btn');
+        copyBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            copyAsset(asset);
+        });
+    }
 
-    copyBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        copyAsset(asset);
-    });
-
-    downloadBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        downloadAsset(asset);
-    });
+    if (settings.showDownloadBtn) {
+        const downloadBtn = tile.querySelector('.download-btn');
+        downloadBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            downloadAsset(asset);
+        });
+    }
 
     tile.addEventListener('click', () => showPreview(asset));
 
@@ -295,8 +340,13 @@ function getPreviewHtml(asset) {
         const fontFamily = `font-${asset.id}`;
         loadFont(fontFamily, asset.url);
         return `
-      <div class="font-preview" data-font="${fontFamily}" style="font-family: '${fontFamily}', sans-serif;">
-        Aa
+      <div class="font-preview" data-font="${fontFamily}" data-asset-id="${asset.id}">
+        <span class="font-sample" style="font-family: '${fontFamily}', sans-serif;">Aa</span>
+        <span class="font-loading-indicator">
+          <svg class="spinner" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 12a9 9 0 1 1-6.219-8.56"></path>
+          </svg>
+        </span>
       </div>
     `;
     }
@@ -323,12 +373,20 @@ function loadFont(fontFamily, url) {
         document.fonts.add(loadedFont);
         // Force re-render of all elements using this font
         document.querySelectorAll(`[data-font="${fontFamily}"]`).forEach(el => {
-            el.style.fontFamily = `'${fontFamily}', sans-serif`;
             el.classList.add('font-loaded');
+            // Update the font-sample span
+            const sample = el.querySelector('.font-sample');
+            if (sample) {
+                sample.style.fontFamily = `'${fontFamily}', sans-serif`;
+            }
         });
         return loadedFont;
     }).catch(err => {
         console.warn(`Failed to load font: ${fontFamily}`, err);
+        // Show error state
+        document.querySelectorAll(`[data-font="${fontFamily}"]`).forEach(el => {
+            el.classList.add('font-error');
+        });
     });
 
     loadedFonts.set(fontFamily, loadPromise);
@@ -524,6 +582,8 @@ function setupEventListeners() {
         if (e.key === 'Escape') {
             if (previewModal.classList.contains('active')) {
                 hidePreview();
+            } else if (settingsModal.classList.contains('active')) {
+                closeSettings();
             } else {
                 window.api.hideWindow();
             }
@@ -666,6 +726,21 @@ function setupEventListeners() {
     window.api.onWindowHidden(() => {
         hidePreview();
     });
+
+    // Settings modal
+    settingsBtn.addEventListener('click', openSettings);
+    settingsCloseBtn.addEventListener('click', closeSettings);
+    settingsSaveBtn.addEventListener('click', handleSaveSettings);
+
+    // Close settings on overlay click
+    settingsModal.addEventListener('click', (e) => {
+        if (e.target === settingsModal) {
+            closeSettings();
+        }
+    });
+
+    // Update slider label on change
+    gridColumnsSlider.addEventListener('input', updateGridColumnsLabel);
 }
 
 // ===== Utilities =====
@@ -704,4 +779,108 @@ function getColumnsCount() {
         cols++;
     }
     return cols || 1;
+}
+
+// ===== Settings Functions =====
+function loadSettings() {
+    try {
+        const saved = localStorage.getItem(SETTINGS_KEY);
+        if (saved) {
+            settings = { ...DEFAULT_SETTINGS, ...JSON.parse(saved) };
+        }
+    } catch (e) {
+        console.warn('Failed to load settings:', e);
+        settings = { ...DEFAULT_SETTINGS };
+    }
+}
+
+function saveSettings() {
+    try {
+        localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+    } catch (e) {
+        console.warn('Failed to save settings:', e);
+    }
+}
+
+function applySettings() {
+    // Apply default category
+    currentCategory = settings.defaultCategory;
+    filterBtns.forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.category === currentCategory);
+    });
+
+    // Apply grid columns
+    applyGridColumns();
+}
+
+function applyGridColumns() {
+    if (settings.gridColumns === 0) {
+        // Auto mode - use original responsive grid
+        assetsGrid.style.gridTemplateColumns = 'repeat(auto-fill, minmax(180px, 1fr))';
+    } else {
+        // Fixed columns
+        assetsGrid.style.gridTemplateColumns = `repeat(${settings.gridColumns}, 1fr)`;
+    }
+}
+
+function openSettings() {
+    // Populate form with current settings
+    showPreviewBtnCheck.checked = settings.showPreviewBtn;
+    showCopyBtnCheck.checked = settings.showCopyBtn;
+    showDownloadBtnCheck.checked = settings.showDownloadBtn;
+    defaultCategorySelect.value = settings.defaultCategory;
+    gridColumnsSlider.value = settings.gridColumns;
+    updateGridColumnsLabel();
+
+    settingsModal.classList.add('active');
+}
+
+function closeSettings() {
+    settingsModal.classList.remove('active');
+}
+
+function updateGridColumnsLabel() {
+    const value = parseInt(gridColumnsSlider.value);
+    gridColumnsValue.textContent = value === 0 ? 'Auto' : value;
+}
+
+function handleSaveSettings() {
+    // Read values from form
+    const newSettings = {
+        showPreviewBtn: showPreviewBtnCheck.checked,
+        showCopyBtn: showCopyBtnCheck.checked,
+        showDownloadBtn: showDownloadBtnCheck.checked,
+        defaultCategory: defaultCategorySelect.value,
+        gridColumns: parseInt(gridColumnsSlider.value)
+    };
+
+    // Check if button visibility changed (requires re-render)
+    const buttonsChanged =
+        settings.showPreviewBtn !== newSettings.showPreviewBtn ||
+        settings.showCopyBtn !== newSettings.showCopyBtn ||
+        settings.showDownloadBtn !== newSettings.showDownloadBtn;
+
+    // Check if default category changed
+    const categoryChanged = settings.defaultCategory !== newSettings.defaultCategory;
+
+    // Update settings
+    settings = newSettings;
+    saveSettings();
+
+    // Apply grid columns immediately
+    applyGridColumns();
+
+    // Apply new category if changed
+    if (categoryChanged) {
+        currentCategory = settings.defaultCategory;
+        filterBtns.forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.category === currentCategory);
+        });
+        filterAssets();
+    } else if (buttonsChanged) {
+        // Re-render tiles if only button visibility changed
+        filterAssets();
+    }
+
+    closeSettings();
 }
