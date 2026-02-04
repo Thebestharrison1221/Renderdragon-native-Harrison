@@ -207,7 +207,7 @@ function downloadToFile(url, filepath, options = {}) {
           rejected = true;
           response.destroy();
           file.close(() => {
-            fs.unlink(filepath, () => {});
+            fs.unlink(filepath, () => { });
           });
           reject(new Error(`File size exceeds limit of ${maxSizeBytes} bytes`));
         }
@@ -221,19 +221,19 @@ function downloadToFile(url, filepath, options = {}) {
       });
 
       file.on("error", (err) => {
-        fs.unlink(filepath, () => {});
+        fs.unlink(filepath, () => { });
         reject(err);
       });
     });
 
     request.on("timeout", () => {
       request.destroy();
-      fs.unlink(filepath, () => {});
+      fs.unlink(filepath, () => { });
       reject(new Error("Request timed out"));
     });
 
     request.on("error", (err) => {
-      fs.unlink(filepath, () => {});
+      fs.unlink(filepath, () => { });
       reject(err);
     });
 
@@ -275,17 +275,15 @@ function copyFileToClipboard(filePath) {
       );
     } else if (process.platform === "darwin") {
       const { execFile } = require("child_process");
-      // Escape path for AppleScript (double backslashes and escaped quotes)
-      const escapedPath = filePath.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
       // Use AppleScript to set clipboard to POSIX file.
-      // Using 'as alias' and 'tell application "Finder"' is the most compatible way across macOS versions.
-      const script = `tell application "Finder" to set the clipboard to (POSIX file "${escapedPath}") as alias`;
+      // Escape internal quotes for AppleScript string interpolation
+      const script = `tell application "Finder" to set the clipboard to (POSIX file "${filePath.replace(/"/g, '\\"')}") as alias`;
 
       execFile("osascript", ["-e", script], { timeout: 10000 }, (error) => {
         if (error) {
           console.error("AppleScript error:", error);
           // Fallback to a simpler version if Finder interaction fails
-          const fallbackScript = `set the clipboard to (POSIX file "${escapedPath}")`;
+          const fallbackScript = `set the clipboard to (POSIX file "${filePath.replace(/"/g, '\\"')}")`;
           execFile("osascript", ["-e", fallbackScript], (fallbackError) => {
             if (fallbackError) {
               resolve({ success: false, message: fallbackError.message });
