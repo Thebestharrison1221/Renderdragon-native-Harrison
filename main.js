@@ -1,4 +1,4 @@
-const { app, BrowserWindow, globalShortcut, ipcMain, dialog, clipboard, nativeImage } = require('electron');
+const { app, BrowserWindow, globalShortcut, ipcMain, dialog, clipboard, nativeImage, Tray, Menu } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const https = require('https');
@@ -6,6 +6,7 @@ const http = require('http');
 const os = require('os');
 
 let mainWindow = null;
+let tray = null;
 let isVisible = false;
 
 const TEMP_DIR = path.join(os.tmpdir(), 'renderdragon-assets-temp');
@@ -46,6 +47,7 @@ function createWindow() {
         skipTaskbar: true,
         alwaysOnTop: true,
         show: false,
+        icon: path.join(__dirname, 'icon', 'icon.png'),
         webPreferences: {
             preload: path.join(__dirname, 'preload.js'),
             contextIsolation: true,
@@ -88,6 +90,74 @@ function toggleWindow() {
     } else {
         showWindow();
     }
+}
+
+function createTray() {
+    // Use the existing icon
+    const iconPath = path.join(__dirname, 'icon', 'icon.png');
+
+    // Create tray icon - resize for system tray (16x16 on most platforms)
+    let trayIcon = nativeImage.createFromPath(iconPath);
+
+    // Resize for tray (16x16 is standard for Windows/Linux, macOS uses 22x22 but handles scaling)
+    if (process.platform === 'win32' || process.platform === 'linux') {
+        trayIcon = trayIcon.resize({ width: 16, height: 16 });
+    } else if (process.platform === 'darwin') {
+        trayIcon = trayIcon.resize({ width: 22, height: 22 });
+        trayIcon.setTemplateImage(true); // Makes it adapt to dark/light menu bar on macOS
+    }
+
+    tray = new Tray(trayIcon);
+    tray.setToolTip('RenderDragon Assets');
+
+    // Create context menu
+    const contextMenu = Menu.buildFromTemplate([
+        {
+            label: isVisible ? 'Hide' : 'Show',
+            click: () => {
+                toggleWindow();
+                updateTrayMenu();
+            }
+        },
+        { type: 'separator' },
+        {
+            label: 'Quit',
+            click: () => {
+                app.quit();
+            }
+        }
+    ]);
+
+    tray.setContextMenu(contextMenu);
+
+    // Single click on tray icon toggles window (Windows/Linux)
+    tray.on('click', () => {
+        toggleWindow();
+        updateTrayMenu();
+    });
+}
+
+function updateTrayMenu() {
+    if (!tray) return;
+
+    const contextMenu = Menu.buildFromTemplate([
+        {
+            label: isVisible ? 'Hide' : 'Show',
+            click: () => {
+                toggleWindow();
+                updateTrayMenu();
+            }
+        },
+        { type: 'separator' },
+        {
+            label: 'Quit',
+            click: () => {
+                app.quit();
+            }
+        }
+    ]);
+
+    tray.setContextMenu(contextMenu);
 }
 
 // Helper function to download file to path
@@ -211,6 +281,7 @@ function copyFileToClipboard(filePath) {
 app.whenReady().then(() => {
     cleanTempDir();
     createWindow();
+    createTray();
 
     // Register global shortcut (Ctrl+Space)
     const registered = globalShortcut.register('CommandOrControl+Space', () => {
@@ -274,10 +345,13 @@ app.whenReady().then(() => {
 app.on('will-quit', () => {
     cleanTempDir();
     globalShortcut.unregisterAll();
+    if (tray) {
+        tray.destroy();
+        tray = null;
+    }
 });
 
 app.on('window-all-closed', () => {
-    if (process.platform !== 'darwin') {
-        app.quit();
-    }
+    // Don't quit when windows are closed - keep running in tray
+    // App can only be quit via tray menu or Cmd+Q on macOS
 });
