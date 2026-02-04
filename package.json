@@ -1,6 +1,6 @@
 {
     "name": "renderdragon-assets",
-    "version": "1.0.4",
+    "version": "1.0.5",
     "description": "Asset search application for RenderDragon resources",
     "main": "main.js",
     "scripts": {
