@@ -201,6 +201,25 @@
                         <span id="gridColumnsValue" class="slider-value">Auto</span>
                     </div>
                 </div>
+
+                <!-- Keybind Configuration Section -->
+                <div class="settings-section">
+                    <h3>Global Shortcut</h3>
+                    <p class="settings-description">Keyboard shortcut to show/hide the app</p>
+                    <div class="keybind-container">
+                        <div class="keybind-input-wrapper">
+                            <input type="text" id="keybindInput" class="keybind-input" readonly placeholder="Click to record...">
+                            <button class="keybind-record-btn" id="keybindRecordBtn" title="Record new shortcut">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <circle cx="12" cy="12" r="10"></circle>
+                                    <circle cx="12" cy="12" r="4" fill="currentColor"></circle>
+                                </svg>
+                            </button>
+                        </div>
+                        <button class="keybind-reset-btn" id="keybindResetBtn" title="Reset to default">Reset</button>
+                    </div>
+                    <p class="keybind-hint" id="keybindHint"></p>
+                </div>
             </div>
 
             <div class="settings-footer">

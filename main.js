@@ -18,8 +18,85 @@ const os = require("os");
 let mainWindow = null;
 let tray = null;
 let isVisible = false;
+let currentShortcut = null;
 
 const TEMP_DIR = path.join(os.tmpdir(), "renderdragon-assets-temp");
+const CONFIG_DIR = path.join(app.getPath("userData"), "config");
+const CONFIG_FILE = path.join(CONFIG_DIR, "settings.json");
+
+// Default shortcuts per platform
+const DEFAULT_SHORTCUTS = {
+  darwin: "CommandOrControl+Shift+Space",
+  win32: "CommandOrControl+Space",
+  linux: "CommandOrControl+Space"
+};
+
+function getDefaultShortcut() {
+  return DEFAULT_SHORTCUTS[process.platform] || DEFAULT_SHORTCUTS.linux;
+}
+
+// Settings management
+function loadSettings() {
+  try {
+    if (!fs.existsSync(CONFIG_DIR)) {
+      fs.mkdirSync(CONFIG_DIR, { recursive: true });
+    }
+    if (fs.existsSync(CONFIG_FILE)) {
+      const data = fs.readFileSync(CONFIG_FILE, "utf8");
+      return JSON.parse(data);
+    }
+  } catch (err) {
+    console.error("Failed to load settings:", err);
+  }
+  return { shortcut: getDefaultShortcut() };
+}
+
+function saveSettings(settings) {
+  try {
+    if (!fs.existsSync(CONFIG_DIR)) {
+      fs.mkdirSync(CONFIG_DIR, { recursive: true });
+    }
+    fs.writeFileSync(CONFIG_FILE, JSON.stringify(settings, null, 2));
+    return true;
+  } catch (err) {
+    console.error("Failed to save settings:", err);
+    return false;
+  }
+}
+
+function registerShortcut(shortcut) {
+  // Unregister current shortcut first
+  if (currentShortcut) {
+    try {
+      globalShortcut.unregister(currentShortcut);
+    } catch (e) {
+      console.error("Failed to unregister shortcut:", e);
+    }
+  }
+
+  // Try to register new shortcut
+  try {
+    const registered = globalShortcut.register(shortcut, () => {
+      toggleWindow();
+    });
+
+    if (registered) {
+      currentShortcut = shortcut;
+      console.log(`Registered global shortcut: ${shortcut}`);
+      return { success: true, shortcut };
+    } else {
+      console.error(`Failed to register shortcut: ${shortcut}`);
+      // Try to re-register the old shortcut
+      if (currentShortcut && currentShortcut !== shortcut) {
+        globalShortcut.register(currentShortcut, () => toggleWindow());
+      }
+      return { success: false, message: "Shortcut may be in use by another application" };
+    }
+  } catch (err) {
+    console.error("Shortcut registration error:", err);
+    return { success: false, message: err.message };
+  }
+}
 
 function cleanTempDir() {
   try {
@@ -274,19 +351,38 @@ function copyFileToClipboard(filePath) {
         },
       );
     } else if (process.platform === "darwin") {
-      const { execFile } = require("child_process");
-      // Use AppleScript to set clipboard to POSIX file.
-      // Escape internal quotes and backslashes for AppleScript string interpolation
-      const script = `tell application "Finder" to set the clipboard to (POSIX file "${filePath.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}") as alias`;
+      const { exec } = require("child_process");
+      // Use a Swift-based approach via osascript that properly sets file to clipboard
+      // This method doesn't require Finder automation permissions and works reliably on Intel Macs
 
-      execFile("osascript", ["-e", script], { timeout: 10000 }, (error) => {
+      // Escape the file path for shell
+      const escapedPath = filePath.replace(/'/g, "'\\''");
+
+      // Use Objective-C bridge via osascript to set file to pasteboard
+      // This is more reliable than AppleScript's "set the clipboard to" for files
+      const script = `
+        use framework "AppKit"
+        use scripting additions
+        
+        set theFile to POSIX file "${filePath.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"
+        set fileURL to current application's NSURL's fileURLWithPath:"${filePath.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"
+        
+        set pasteboard to current application's NSPasteboard's generalPasteboard()
+        pasteboard's clearContents()
+        pasteboard's writeObjects:{fileURL}
+      `;
+
+      exec(`osascript -e '${script.replace(/'/g, "'\\''")}'`, { timeout: 10000 }, (error) => {
         if (error) {
-          console.error("AppleScript error:", error);
-          // Fallback to a simpler version if Finder interaction fails
-          const fallbackScript = `set the clipboard to (POSIX file "${filePath.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}")`;
-          execFile("osascript", ["-e", fallbackScript], (fallbackError) => {
+          console.error("AppleScript/ObjC error:", error);
+          // Fallback: Try the traditional AppleScript approach without Finder
+          const fallbackScript = `set the clipboard to (POSIX file "${filePath.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}") as alias`;
+          exec(`osascript -e '${fallbackScript.replace(/'/g, "'\\''")}'`, { timeout: 10000 }, (fallbackError) => {
             if (fallbackError) {
-              resolve({ success: false, message: fallbackError.message });
+              console.error("Fallback AppleScript error:", fallbackError);
+              // Last resort: Just copy the file path as text
+              clipboard.writeText(filePath);
+              resolve({ success: true, type: "text", path: filePath, message: "Copied file path as text" });
             } else {
               resolve({ success: true, type: "file", path: filePath });
             }
@@ -318,13 +414,14 @@ app.whenReady().then(() => {
   createWindow();
   createTray();
 
-  // Register global shortcut (Ctrl+Space)
-  const registered = globalShortcut.register("CommandOrControl+Space", () => {
-    toggleWindow();
-  });
+  // Load settings and register global shortcut
+  const settings = loadSettings();
+  const shortcutToRegister = settings.shortcut || getDefaultShortcut();
+  const result = registerShortcut(shortcutToRegister);
 
-  if (!registered) {
-    console.error("Failed to register global shortcut");
+  if (!result.success) {
+    console.error("Failed to register global shortcut, trying default");
+    registerShortcut(getDefaultShortcut());
   }
 
   // IPC handlers
@@ -368,6 +465,41 @@ app.whenReady().then(() => {
     } catch (error) {
       return { success: false, message: error.message };
     }
+  });
+
+  // Keybind management handlers
+  ipcMain.handle("get-shortcut", () => {
+    const settings = loadSettings();
+    return {
+      shortcut: currentShortcut || settings.shortcut || getDefaultShortcut(),
+      defaultShortcut: getDefaultShortcut(),
+      platform: process.platform
+    };
+  });
+
+  ipcMain.handle("set-shortcut", async (event, newShortcut) => {
+    if (!newShortcut || typeof newShortcut !== "string") {
+      return { success: false, message: "Invalid shortcut format" };
+    }
+
+    const result = registerShortcut(newShortcut);
+    if (result.success) {
+      const settings = loadSettings();
+      settings.shortcut = newShortcut;
+      saveSettings(settings);
+    }
+    return result;
+  });
+
+  ipcMain.handle("reset-shortcut", async () => {
+    const defaultShortcut = getDefaultShortcut();
+    const result = registerShortcut(defaultShortcut);
+    if (result.success) {
+      const settings = loadSettings();
+      settings.shortcut = defaultShortcut;
+      saveSettings(settings);
+    }
+    return result;
   });
 
   app.on("activate", () => {

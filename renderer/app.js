@@ -33,6 +33,11 @@ const DEFAULT_SETTINGS = {
 };
 let settings = { ...DEFAULT_SETTINGS };
 
+// Keybind state
+let isRecordingKeybind = false;
+let pendingShortcut = null;
+let currentShortcutInfo = null;
+
 // ===== DOM Elements =====
 const searchInput = document.getElementById('searchInput');
 const closeBtn = document.getElementById('closeBtn');
@@ -58,10 +63,18 @@ const defaultCategorySelect = document.getElementById('defaultCategory');
 const gridColumnsSlider = document.getElementById('gridColumns');
 const gridColumnsValue = document.getElementById('gridColumnsValue');
 
+// Keybind elements
+const keybindInput = document.getElementById('keybindInput');
+const keybindRecordBtn = document.getElementById('keybindRecordBtn');
+const keybindResetBtn = document.getElementById('keybindResetBtn');
+const keybindHint = document.getElementById('keybindHint');
+const keybindInputWrapper = keybindInput?.parentElement;
+
 // ===== Initialize =====
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
     loadSettings();
     applySettings();
+    await loadKeybindSettings();
     fetchAllAssets();
     setupEventListeners();
 });
@@ -578,6 +591,11 @@ function setupEventListeners() {
 
     // Keyboard navigation
     document.addEventListener('keydown', (e) => {
+        // Skip if recording keybind - let the recording handler capture it
+        if (isRecordingKeybind) {
+            return;
+        }
+
         // Handle Escape first
         if (e.key === 'Escape') {
             if (previewModal.classList.contains('active')) {
@@ -741,6 +759,17 @@ function setupEventListeners() {
 
     // Update slider label on change
     gridColumnsSlider.addEventListener('input', updateGridColumnsLabel);
+
+    // Keybind configuration
+    if (keybindInput) {
+        keybindInput.addEventListener('click', startKeybindRecording);
+    }
+    if (keybindRecordBtn) {
+        keybindRecordBtn.addEventListener('click', startKeybindRecording);
+    }
+    if (keybindResetBtn) {
+        keybindResetBtn.addEventListener('click', resetKeybind);
+    }
 }
 
 // ===== Utilities =====
@@ -844,7 +873,7 @@ function updateGridColumnsLabel() {
     gridColumnsValue.textContent = value === 0 ? 'Auto' : value;
 }
 
-function handleSaveSettings() {
+async function handleSaveSettings() {
     // Read values from form
     const newSettings = {
         showPreviewBtn: showPreviewBtnCheck.checked,
@@ -867,6 +896,9 @@ function handleSaveSettings() {
     settings = newSettings;
     saveSettings();
 
+    // Apply keybind change if pending
+    await applyKeybindChange();
+
     // Apply grid columns immediately
     applyGridColumns();
 
@@ -883,4 +915,286 @@ function handleSaveSettings() {
     }
 
     closeSettings();
+}
+
+// ===== Keybind Functions =====
+async function loadKeybindSettings() {
+    try {
+        const info = await window.api.getShortcut();
+        currentShortcutInfo = info;
+        if (keybindInput) {
+            keybindInput.value = formatShortcutForDisplay(info.shortcut);
+        }
+        updateKeybindHint();
+    } catch (e) {
+        console.error('Failed to load keybind settings:', e);
+    }
+}
+
+function formatShortcutForDisplay(shortcut) {
+    if (!shortcut) return '';
+
+    // Convert Electron accelerator format to display format
+    return shortcut
+        .replace(/CommandOrControl/gi, currentShortcutInfo?.platform === 'darwin' ? '⌘' : 'Ctrl')
+        .replace(/Control/gi, currentShortcutInfo?.platform === 'darwin' ? '⌃' : 'Ctrl')
+        .replace(/Command/gi, '⌘')
+        .replace(/Alt/gi, currentShortcutInfo?.platform === 'darwin' ? '⌥' : 'Alt')
+        .replace(/Shift/gi, currentShortcutInfo?.platform === 'darwin' ? '⇧' : 'Shift')
+        .replace(/\+/g, ' + ')
+        .replace(/Space/gi, 'Space');
+}
+
+function formatKeyEventToAccelerator(e) {
+    const parts = [];
+
+    // Add modifiers in consistent order
+    if (e.ctrlKey || e.metaKey) {
+        parts.push('CommandOrControl');
+    }
+    if (e.altKey) {
+        parts.push('Alt');
+    }
+    if (e.shiftKey) {
+        parts.push('Shift');
+    }
+
+    // Get the key - use e.code for more reliable key detection on macOS
+    let key = e.key;
+    const code = e.code;
+
+    // Normalize key names - check both key and code for reliability
+    // Handle space - including non-breaking space from Option+Space on macOS
+    if (key === ' ' || key === '\u00A0' || code === 'Space') {
+        key = 'Space';
+    }
+    // Handle special keys
+    else if (key === 'Escape' || code === 'Escape') key = 'Escape';
+    else if (key === 'Tab' || code === 'Tab') key = 'Tab';
+    else if (key === 'Enter' || code === 'Enter') key = 'Enter';
+    else if (key === 'Backspace' || code === 'Backspace') key = 'Backspace';
+    else if (key === 'Delete' || code === 'Delete') key = 'Delete';
+    else if (key === 'ArrowUp' || code === 'ArrowUp') key = 'Up';
+    else if (key === 'ArrowDown' || code === 'ArrowDown') key = 'Down';
+    else if (key === 'ArrowLeft' || code === 'ArrowLeft') key = 'Left';
+    else if (key === 'ArrowRight' || code === 'ArrowRight') key = 'Right';
+    else if (key === 'Home' || code === 'Home') key = 'Home';
+    else if (key === 'End' || code === 'End') key = 'End';
+    else if (key === 'PageUp' || code === 'PageUp') key = 'PageUp';
+    else if (key === 'PageDown' || code === 'PageDown') key = 'PageDown';
+    else if (key === 'Insert' || code === 'Insert') key = 'Insert';
+    // F1-F12 keys
+    else if (code && code.startsWith('F') && !isNaN(code.slice(1)) && parseInt(code.slice(1)) <= 12) {
+        key = code;
+    }
+    else if (key.startsWith('F') && !isNaN(key.slice(1)) && parseInt(key.slice(1)) <= 12) {
+        key = key;
+    }
+    // Letter and number keys - use code for reliability on macOS with Alt/Option
+    else if (code && code.startsWith('Key')) {
+        key = code.slice(3); // KeyA -> A
+    }
+    else if (code && code.startsWith('Digit')) {
+        key = code.slice(5); // Digit1 -> 1
+    }
+    // Single ASCII printable characters
+    else if (key.length === 1 && key.charCodeAt(0) >= 32 && key.charCodeAt(0) <= 126) {
+        key = key.toUpperCase();
+    }
+    // Unknown or non-ASCII key
+    else {
+        console.log('Unknown key:', key, 'code:', code);
+        return null;
+    }
+
+    // Don't allow modifier-only shortcuts
+    if (['Control', 'Alt', 'Shift', 'Meta', 'CapsLock', 'NumLock', 'ScrollLock'].includes(key)) {
+        return null;
+    }
+
+    // Validate that key is ASCII-only (required by Electron accelerators)
+    if (!/^[A-Za-z0-9]+$/.test(key) && !['Space', 'Escape', 'Tab', 'Enter', 'Backspace', 'Delete', 'Up', 'Down', 'Left', 'Right', 'Home', 'End', 'PageUp', 'PageDown', 'Insert', 'F1', 'F2', 'F3', 'F4', 'F5', 'F6', 'F7', 'F8', 'F9', 'F10', 'F11', 'F12'].includes(key)) {
+        console.log('Invalid key for accelerator:', key);
+        return null;
+    }
+
+    // Require at least one modifier
+    if (parts.length === 0) {
+        return null;
+    }
+
+    parts.push(key);
+    const accelerator = parts.join('+');
+
+    // Final validation - must be ASCII only
+    if (!/^[\x20-\x7E]+$/.test(accelerator)) {
+        console.log('Non-ASCII accelerator rejected:', accelerator);
+        return null;
+    }
+
+    return accelerator;
+}
+
+function startKeybindRecording() {
+    if (isRecordingKeybind) {
+        stopKeybindRecording();
+        return;
+    }
+
+    console.log('Starting keybind recording...');
+    isRecordingKeybind = true;
+    pendingShortcut = null;
+
+    if (keybindInput) {
+        keybindInput.value = 'Press keys...';
+        keybindInput.classList.add('recording');
+        keybindInput.focus(); // Focus the input to ensure key events work
+    }
+    if (keybindInputWrapper) {
+        keybindInputWrapper.classList.add('recording');
+    }
+    if (keybindRecordBtn) {
+        keybindRecordBtn.classList.add('recording');
+    }
+    if (keybindHint) {
+        keybindHint.textContent = 'Press a key combination (e.g., Ctrl+Shift+Space), then click Save';
+        keybindHint.className = 'keybind-hint';
+    }
+
+    // Add temporary keydown listener with capture to intercept before other handlers
+    window.addEventListener('keydown', handleKeybindRecording, true);
+    window.addEventListener('keyup', handleKeybindKeyUp, true);
+}
+
+function stopKeybindRecording() {
+    console.log('Stopping keybind recording...');
+    isRecordingKeybind = false;
+
+    if (keybindInput) {
+        keybindInput.classList.remove('recording');
+        // Restore previous value if no new shortcut was recorded
+        if (!pendingShortcut && currentShortcutInfo) {
+            keybindInput.value = formatShortcutForDisplay(currentShortcutInfo.shortcut);
+        }
+        keybindInput.blur(); // Remove focus
+    }
+    if (keybindInputWrapper) {
+        keybindInputWrapper.classList.remove('recording');
+    }
+    if (keybindRecordBtn) {
+        keybindRecordBtn.classList.remove('recording');
+    }
+
+    window.removeEventListener('keydown', handleKeybindRecording, true);
+    window.removeEventListener('keyup', handleKeybindKeyUp, true);
+}
+
+// Prevent default on keyup as well
+function handleKeybindKeyUp(e) {
+    if (isRecordingKeybind) {
+        e.preventDefault();
+        e.stopPropagation();
+    }
+}
+
+function handleKeybindRecording(e) {
+    console.log('Key event captured:', e.key, 'ctrl:', e.ctrlKey, 'meta:', e.metaKey, 'alt:', e.altKey, 'shift:', e.shiftKey);
+
+    e.preventDefault();
+    e.stopPropagation();
+    e.stopImmediatePropagation();
+
+    // Escape cancels recording
+    if (e.key === 'Escape') {
+        stopKeybindRecording();
+        if (keybindHint) {
+            keybindHint.textContent = 'Recording cancelled';
+            keybindHint.className = 'keybind-hint';
+        }
+        return;
+    }
+
+    const accelerator = formatKeyEventToAccelerator(e);
+    console.log('Accelerator result:', accelerator);
+
+    if (accelerator) {
+        pendingShortcut = accelerator;
+        if (keybindInput) {
+            keybindInput.value = formatShortcutForDisplay(accelerator);
+        }
+        stopKeybindRecording();
+        if (keybindHint) {
+            keybindHint.textContent = 'New shortcut recorded! Click "Save Settings" to apply.';
+            keybindHint.className = 'keybind-hint success';
+        }
+    } else {
+        // Show hint about needing modifiers
+        if (keybindHint) {
+            keybindHint.textContent = 'Please include a modifier key (Cmd, Ctrl, Alt, or Shift) with your shortcut';
+            keybindHint.className = 'keybind-hint';
+        }
+    }
+}
+
+async function applyKeybindChange() {
+    if (!pendingShortcut) return true;
+
+    try {
+        const result = await window.api.setShortcut(pendingShortcut);
+        if (result.success) {
+            currentShortcutInfo.shortcut = pendingShortcut;
+            pendingShortcut = null;
+            if (keybindHint) {
+                keybindHint.textContent = 'Shortcut updated successfully!';
+                keybindHint.className = 'keybind-hint success';
+            }
+            return true;
+        } else {
+            if (keybindHint) {
+                keybindHint.textContent = result.message || 'Failed to set shortcut. It may be in use.';
+                keybindHint.className = 'keybind-hint error';
+            }
+            // Restore original value
+            if (keybindInput && currentShortcutInfo) {
+                keybindInput.value = formatShortcutForDisplay(currentShortcutInfo.shortcut);
+            }
+            return false;
+        }
+    } catch (e) {
+        console.error('Failed to set shortcut:', e);
+        if (keybindHint) {
+            keybindHint.textContent = 'Error setting shortcut';
+            keybindHint.className = 'keybind-hint error';
+        }
+        return false;
+    }
+}
+
+async function resetKeybind() {
+    try {
+        const result = await window.api.resetShortcut();
+        if (result.success) {
+            await loadKeybindSettings();
+            pendingShortcut = null;
+            if (keybindHint) {
+                keybindHint.textContent = 'Shortcut reset to default';
+                keybindHint.className = 'keybind-hint success';
+            }
+        } else {
+            if (keybindHint) {
+                keybindHint.textContent = result.message || 'Failed to reset shortcut';
+                keybindHint.className = 'keybind-hint error';
+            }
+        }
+    } catch (e) {
+        console.error('Failed to reset shortcut:', e);
+    }
+}
+
+function updateKeybindHint() {
+    if (!keybindHint || !currentShortcutInfo) return;
+
+    const defaultDisplay = formatShortcutForDisplay(currentShortcutInfo.defaultShortcut);
+    keybindHint.textContent = `Default: ${defaultDisplay}`;
+    keybindHint.className = 'keybind-hint';
 }
