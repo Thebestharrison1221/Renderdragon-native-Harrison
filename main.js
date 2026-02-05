@@ -355,7 +355,7 @@ function copyFileToClipboard(filePath) {
       // Use a Swift-based approach via osascript that properly sets file to clipboard
       // This method doesn't require Finder automation permissions and works reliably on Intel Macs
 
-      // Escape the file path for shell
+      // Escape the file path for shell - use this in the script below
       const escapedPath = filePath.replace(/'/g, "'\\''");
 
       // Use Objective-C bridge via osascript to set file to pasteboard
