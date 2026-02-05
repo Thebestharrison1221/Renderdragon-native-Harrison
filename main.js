@@ -375,8 +375,8 @@ function copyFileToClipboard(filePath) {
         if (error) {
           console.error("AppleScript/ObjC error:", error);
           // Fallback: Try the traditional AppleScript approach without Finder
-          const fallbackScript = `set the clipboard to (POSIX file "${safePath}") as alias`;
-          execFile("osascript", ["-e", fallbackScript], { timeout: 10000 }, (fallbackError) => {
+          const fallbackScript = `set the clipboard to (POSIX file "'${escapedPath}'") as alias`;
+          exec(`osascript -e '${fallbackScript.replace(/'/g, "'\\''")}'`, { timeout: 10000 }, (fallbackError) => {
             if (fallbackError) {
               console.error("Fallback AppleScript error:", fallbackError);
               // Last resort: Just copy the file path as text
