@@ -935,12 +935,13 @@ function formatShortcutForDisplay(shortcut) {
     if (!shortcut) return '';
 
     // Convert Electron accelerator format to display format
+    // Convert Electron accelerator format to display format
     return shortcut
-        .replace(/CommandOrControl/gi, currentShortcutInfo?.platform === 'darwin' ? '⌘' : 'Ctrl')
-        .replace(/Control/gi, currentShortcutInfo?.platform === 'darwin' ? '⌃' : 'Ctrl')
+        .replace(/CommandOrControl/gi, window.api.platform === 'darwin' ? '⌘' : 'Ctrl')
+        .replace(/Control/gi, window.api.platform === 'darwin' ? '⌃' : 'Ctrl')
         .replace(/Command/gi, '⌘')
-        .replace(/Alt/gi, currentShortcutInfo?.platform === 'darwin' ? '⌥' : 'Alt')
-        .replace(/Shift/gi, currentShortcutInfo?.platform === 'darwin' ? '⇧' : 'Shift')
+        .replace(/Alt/gi, window.api.platform === 'darwin' ? '⌥' : 'Alt')
+        .replace(/Shift/gi, window.api.platform === 'darwin' ? '⇧' : 'Shift')
         .replace(/\+/g, ' + ')
         .replace(/Space/gi, 'Space');
 }

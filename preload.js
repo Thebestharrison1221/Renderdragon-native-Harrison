@@ -9,5 +9,6 @@ contextBridge.exposeInMainWorld('api', {
     // Keybind management
     getShortcut: () => ipcRenderer.invoke('get-shortcut'),
     setShortcut: (shortcut) => ipcRenderer.invoke('set-shortcut', shortcut),
-    resetShortcut: () => ipcRenderer.invoke('reset-shortcut')
+    resetShortcut: () => ipcRenderer.invoke('reset-shortcut'),
+    platform: process.platform
 });

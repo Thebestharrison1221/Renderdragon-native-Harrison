@@ -351,33 +351,32 @@ function copyFileToClipboard(filePath) {
         },
       );
     } else if (process.platform === "darwin") {
-      const { exec } = require("child_process");
+      const { execFile } = require("child_process");
       // Use a Swift-based approach via osascript that properly sets file to clipboard
       // This method doesn't require Finder automation permissions and works reliably on Intel Macs
 
-      // Escape the file path for shell - use this in the script below
-      const escapedPath = filePath.replace(/'/g, "'\\''");
+      // Escape for AppleScript string (double quotes and backslashes)
+      const safePath = filePath.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
 
       // Use Objective-C bridge via osascript to set file to pasteboard
-      // This is more reliable than AppleScript's "set the clipboard to" for files
       const script = `
         use framework "AppKit"
         use scripting additions
         
-        set theFile to POSIX file "'${escapedPath}'"
-        set fileURL to current application's NSURL's fileURLWithPath:"'${escapedPath}'"
+        set theFile to POSIX file "${safePath}"
+        set fileURL to current application's NSURL's fileURLWithPath:"${safePath}"
         
         set pasteboard to current application's NSPasteboard's generalPasteboard()
         pasteboard's clearContents()
         pasteboard's writeObjects:{fileURL}
       `;
 
-      exec(`osascript -e '${script.replace(/'/g, "'\\''")}'`, { timeout: 10000 }, (error) => {
+      execFile("osascript", ["-e", script], { timeout: 10000 }, (error) => {
         if (error) {
           console.error("AppleScript/ObjC error:", error);
           // Fallback: Try the traditional AppleScript approach without Finder
-          const fallbackScript = `set the clipboard to (POSIX file "${filePath.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}") as alias`;
-          exec(`osascript -e '${fallbackScript.replace(/'/g, "'\\''")}'`, { timeout: 10000 }, (fallbackError) => {
+          const fallbackScript = `set the clipboard to (POSIX file "${safePath}") as alias`;
+          execFile("osascript", ["-e", fallbackScript], { timeout: 10000 }, (fallbackError) => {
             if (fallbackError) {
               console.error("Fallback AppleScript error:", fallbackError);
               // Last resort: Just copy the file path as text
