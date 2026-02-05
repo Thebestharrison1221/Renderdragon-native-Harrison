@@ -364,8 +364,8 @@ function copyFileToClipboard(filePath) {
         use framework "AppKit"
         use scripting additions
         
-        set theFile to POSIX file "${filePath.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"
-        set fileURL to current application's NSURL's fileURLWithPath:"${filePath.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"
+        set theFile to POSIX file "'${escapedPath}'"
+        set fileURL to current application's NSURL's fileURLWithPath:"'${escapedPath}'"
         
         set pasteboard to current application's NSPasteboard's generalPasteboard()
         pasteboard's clearContents()
