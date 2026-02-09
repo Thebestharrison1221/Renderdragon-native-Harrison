@@ -18,8 +18,115 @@ const os = require("os");
 let mainWindow = null;
 let tray = null;
 let isVisible = false;
+let currentShortcut = null;
 
 const TEMP_DIR = path.join(os.tmpdir(), "renderdragon-assets-temp");
+const CONFIG_DIR = path.join(app.getPath("userData"), "config");
+const CONFIG_FILE = path.join(CONFIG_DIR, "settings.json");
+
+// Default shortcuts per platform
+const DEFAULT_SHORTCUTS = {
+  darwin: "CommandOrControl+Shift+Space",
+  win32: "Alt+Space",
+  linux: "Alt+Space"
+};
+
+function getDefaultShortcut() {
+  return DEFAULT_SHORTCUTS[process.platform] || DEFAULT_SHORTCUTS.linux;
+}
+
+// Validate Electron accelerator format
+function isValidAccelerator(shortcut) {
+  // Valid modifiers and keys based on Electron's accelerator syntax
+  const modifiers = /^(CommandOrControl|CmdOrCtrl|Command|Cmd|Control|Ctrl|Alt|Option|AltGr|Shift|Super|Meta)$/i;
+  const validKeys = /^([\dA-Z]|F[1-9]|F1[0-9]|F2[0-4]|Plus|Space|Tab|Capslock|Numlock|Scrolllock|Backspace|Delete|Insert|Return|Enter|Up|Down|Left|Right|Home|End|PageUp|PageDown|Escape|Esc|VolumeUp|VolumeDown|VolumeMute|MediaNextTrack|MediaPreviousTrack|MediaStop|MediaPlayPause|PrintScreen|num[0-9]|numdec|numadd|numsub|nummult|numdiv)$/i;
+
+  const parts = shortcut.split("+").map((p) => p.trim());
+  if (parts.length === 0 || parts.some((p) => p === "")) return false;
+
+  const keyPart = parts.pop();
+  if (!validKeys.test(keyPart)) return false;
+
+  return parts.every((mod) => modifiers.test(mod));
+}
+
+// Validate and sanitize settings object
+function validateSettings(parsed) {
+  const defaults = { shortcut: getDefaultShortcut() };
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return defaults;
+  }
+  return {
+    shortcut:
+      typeof parsed.shortcut === "string" && isValidAccelerator(parsed.shortcut)
+        ? parsed.shortcut
+        : defaults.shortcut,
+  };
+}
+
+// Settings management
+function loadSettings() {
+  try {
+    if (!fs.existsSync(CONFIG_DIR)) {
+      fs.mkdirSync(CONFIG_DIR, { recursive: true });
+    }
+    if (fs.existsSync(CONFIG_FILE)) {
+      const data = fs.readFileSync(CONFIG_FILE, "utf8");
+      const parsed = JSON.parse(data);
+      return validateSettings(parsed);
+    }
+  } catch (err) {
+    console.error("Failed to load settings:", err);
+  }
+  return { shortcut: getDefaultShortcut() };
+}
+
+function saveSettings(settings) {
+  try {
+    if (!fs.existsSync(CONFIG_DIR)) {
+      fs.mkdirSync(CONFIG_DIR, { recursive: true });
+    }
+    fs.writeFileSync(CONFIG_FILE, JSON.stringify(settings, null, 2));
+    return true;
+  } catch (err) {
+    console.error("Failed to save settings:", err);
+    return false;
+  }
+}
+
+function registerShortcut(shortcut) {
+  // Unregister current shortcut first
+  if (currentShortcut) {
+    try {
+      globalShortcut.unregister(currentShortcut);
+    } catch (e) {
+      console.error("Failed to unregister shortcut:", e);
+    }
+  }
+
+  // Try to register new shortcut
+  try {
+    const registered = globalShortcut.register(shortcut, () => {
+      toggleWindow();
+    });
+
+    if (registered) {
+      currentShortcut = shortcut;
+      console.log(`Registered global shortcut: ${shortcut}`);
+      return { success: true, shortcut };
+    } else {
+      console.error(`Failed to register shortcut: ${shortcut}`);
+      // Try to re-register the old shortcut
+      if (currentShortcut && currentShortcut !== shortcut) {
+        globalShortcut.register(currentShortcut, () => toggleWindow());
+      }
+      return { success: false, message: "Shortcut may be in use by another application" };
+    }
+  } catch (err) {
+    console.error("Shortcut registration error:", err);
+    return { success: false, message: err.message };
+  }
+}
 
 function cleanTempDir() {
   try {
@@ -275,18 +382,31 @@ function copyFileToClipboard(filePath) {
       );
     } else if (process.platform === "darwin") {
       const { execFile } = require("child_process");
-      // Use AppleScript to set clipboard to POSIX file.
-      // Escape internal quotes and backslashes for AppleScript string interpolation
-      const script = `tell application "Finder" to set the clipboard to (POSIX file "${filePath.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}") as alias`;
+      // Pass file path as argument to avoid AppleScript injection
+      // argv is accessed via "item 1 of argv" in the script
+      const script = `
+        on run argv
+          use framework "AppKit"
+          set thePath to item 1 of argv
+          set fileURL to current application's NSURL's fileURLWithPath:thePath
+          set pasteboard to current application's NSPasteboard's generalPasteboard()
+          pasteboard's clearContents()
+          pasteboard's writeObjects:{fileURL}
+        end run
+      `;
 
-      execFile("osascript", ["-e", script], { timeout: 10000 }, (error) => {
+      execFile("osascript", ["-e", script, filePath], { timeout: 10000 }, (error) => {
         if (error) {
-          console.error("AppleScript error:", error);
-          // Fallback to a simpler version if Finder interaction fails
-          const fallbackScript = `set the clipboard to (POSIX file "${filePath.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}")`;
-          execFile("osascript", ["-e", fallbackScript], (fallbackError) => {
+          console.error("AppleScript/ObjC error:", error);
+          // Fallback: Pass path as argument
+          const fallbackScript = `on run argv
+            set the clipboard to (POSIX file (item 1 of argv)) as alias
+          end run`;
+          execFile("osascript", ["-e", fallbackScript, filePath], { timeout: 10000 }, (fallbackError) => {
             if (fallbackError) {
-              resolve({ success: false, message: fallbackError.message });
+              console.error("Fallback AppleScript error:", fallbackError);
+              clipboard.writeText(filePath);
+              resolve({ success: true, type: "text", path: filePath, message: "Copied file path as text" });
             } else {
               resolve({ success: true, type: "file", path: filePath });
             }
@@ -318,13 +438,14 @@ app.whenReady().then(() => {
   createWindow();
   createTray();
 
-  // Register global shortcut (Ctrl+Space)
-  const registered = globalShortcut.register("CommandOrControl+Space", () => {
-    toggleWindow();
-  });
+  // Load settings and register global shortcut
+  const settings = loadSettings();
+  const shortcutToRegister = settings.shortcut || getDefaultShortcut();
+  const result = registerShortcut(shortcutToRegister);
 
-  if (!registered) {
-    console.error("Failed to register global shortcut");
+  if (!result.success) {
+    console.error("Failed to register global shortcut, trying default");
+    registerShortcut(getDefaultShortcut());
   }
 
   // IPC handlers
@@ -368,6 +489,45 @@ app.whenReady().then(() => {
     } catch (error) {
       return { success: false, message: error.message };
     }
+  });
+
+  // Keybind management handlers
+  ipcMain.handle("get-shortcut", () => {
+    const settings = loadSettings();
+    return {
+      shortcut: currentShortcut || settings.shortcut || getDefaultShortcut(),
+      defaultShortcut: getDefaultShortcut(),
+      platform: process.platform
+    };
+  });
+
+  ipcMain.handle("set-shortcut", async (event, newShortcut) => {
+    if (!newShortcut || typeof newShortcut !== "string") {
+      return { success: false, message: "Invalid shortcut format" };
+    }
+
+    if (!isValidAccelerator(newShortcut)) {
+      return { success: false, message: "Invalid accelerator format. Use modifiers like Ctrl, Alt, Shift with a key (e.g., Ctrl+Shift+P)" };
+    }
+
+    const result = registerShortcut(newShortcut);
+    if (result.success) {
+      const settings = loadSettings();
+      settings.shortcut = newShortcut;
+      saveSettings(settings);
+    }
+    return result;
+  });
+
+  ipcMain.handle("reset-shortcut", async () => {
+    const defaultShortcut = getDefaultShortcut();
+    const result = registerShortcut(defaultShortcut);
+    if (result.success) {
+      const settings = loadSettings();
+      settings.shortcut = defaultShortcut;
+      saveSettings(settings);
+    }
+    return result;
   });
 
   app.on("activate", () => {

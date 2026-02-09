@@ -948,3 +948,126 @@ body {
 .settings-save-btn:hover {
     background: var(--accent-secondary);
 }
+
+/* ===== Keybind Configuration ===== */
+.keybind-container {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+
+.keybind-input-wrapper {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+    transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.keybind-input-wrapper:focus-within {
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 0 3px var(--accent-glow);
+}
+
+.keybind-input-wrapper.recording {
+    border-color: var(--error);
+    box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.3);
+    animation: recording-pulse 1s ease-in-out infinite;
+}
+
+@keyframes recording-pulse {
+    0%, 100% {
+        box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.3);
+    }
+    50% {
+        box-shadow: 0 0 0 5px rgba(239, 68, 68, 0.5);
+    }
+}
+
+.keybind-input {
+    flex: 1;
+    padding: 10px 12px;
+    background: transparent;
+    border: none;
+    color: var(--text-primary);
+    font-size: 14px;
+    font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
+    text-align: center;
+    cursor: pointer;
+    outline: none;
+}
+
+.keybind-input::placeholder {
+    color: var(--text-muted);
+}
+
+.keybind-input.recording {
+    color: var(--error);
+}
+
+.keybind-record-btn {
+    padding: 10px;
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: color var(--transition-fast), background var(--transition-fast);
+}
+
+.keybind-record-btn:hover {
+    color: var(--text-primary);
+    background: var(--bg-hover);
+}
+
+.keybind-record-btn.recording {
+    color: var(--error);
+    animation: recording-blink 0.5s ease-in-out infinite;
+}
+
+@keyframes recording-blink {
+    0%, 100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.5;
+    }
+}
+
+.keybind-reset-btn {
+    padding: 10px 16px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    color: var(--text-secondary);
+    font-size: 13px;
+    cursor: pointer;
+    transition: all var(--transition-fast);
+    white-space: nowrap;
+}
+
+.keybind-reset-btn:hover {
+    background: var(--bg-hover);
+    border-color: var(--border-hover);
+    color: var(--text-primary);
+}
+
+.keybind-hint {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-top: 8px;
+    line-height: 1.4;
+}
+
+.keybind-hint.error {
+    color: var(--error);
+}
+
+.keybind-hint.success {
+    color: var(--success);
+}
