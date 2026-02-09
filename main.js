@@ -35,6 +35,35 @@ function getDefaultShortcut() {
   return DEFAULT_SHORTCUTS[process.platform] || DEFAULT_SHORTCUTS.linux;
 }
 
+// Validate Electron accelerator format
+function isValidAccelerator(shortcut) {
+  // Valid modifiers and keys based on Electron's accelerator syntax
+  const modifiers = /^(CommandOrControl|CmdOrCtrl|Command|Cmd|Control|Ctrl|Alt|Option|AltGr|Shift|Super|Meta)$/i;
+  const validKeys = /^([\dA-Z]|F[1-9]|F1[0-9]|F2[0-4]|Plus|Space|Tab|Capslock|Numlock|Scrolllock|Backspace|Delete|Insert|Return|Enter|Up|Down|Left|Right|Home|End|PageUp|PageDown|Escape|Esc|VolumeUp|VolumeDown|VolumeMute|MediaNextTrack|MediaPreviousTrack|MediaStop|MediaPlayPause|PrintScreen|num[0-9]|numdec|numadd|numsub|nummult|numdiv)$/i;
+
+  const parts = shortcut.split("+").map((p) => p.trim());
+  if (parts.length === 0 || parts.some((p) => p === "")) return false;
+
+  const keyPart = parts.pop();
+  if (!validKeys.test(keyPart)) return false;
+
+  return parts.every((mod) => modifiers.test(mod));
+}
+
+// Validate and sanitize settings object
+function validateSettings(parsed) {
+  const defaults = { shortcut: getDefaultShortcut() };
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return defaults;
+  }
+  return {
+    shortcut:
+      typeof parsed.shortcut === "string" && isValidAccelerator(parsed.shortcut)
+        ? parsed.shortcut
+        : defaults.shortcut,
+  };
+}
+
 // Settings management
 function loadSettings() {
   try {
@@ -43,7 +72,8 @@ function loadSettings() {
     }
     if (fs.existsSync(CONFIG_FILE)) {
       const data = fs.readFileSync(CONFIG_FILE, "utf8");
-      return JSON.parse(data);
+      const parsed = JSON.parse(data);
+      return validateSettings(parsed);
     }
   } catch (err) {
     console.error("Failed to load settings:", err);
@@ -352,34 +382,29 @@ function copyFileToClipboard(filePath) {
       );
     } else if (process.platform === "darwin") {
       const { execFile } = require("child_process");
-      // Use a Swift-based approach via osascript that properly sets file to clipboard
-      // This method doesn't require Finder automation permissions and works reliably on Intel Macs
-
-      // Escape for AppleScript string (double quotes and backslashes)
-      const safePath = filePath.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
-
-      // Use Objective-C bridge via osascript to set file to pasteboard
+      // Pass file path as argument to avoid AppleScript injection
+      // argv is accessed via "item 1 of argv" in the script
       const script = `
-        use framework "AppKit"
-        use scripting additions
-        
-        set theFile to POSIX file "${safePath}"
-        set fileURL to current application's NSURL's fileURLWithPath:"${safePath}"
-        
-        set pasteboard to current application's NSPasteboard's generalPasteboard()
-        pasteboard's clearContents()
-        pasteboard's writeObjects:{fileURL}
+        on run argv
+          use framework "AppKit"
+          set thePath to item 1 of argv
+          set fileURL to current application's NSURL's fileURLWithPath:thePath
+          set pasteboard to current application's NSPasteboard's generalPasteboard()
+          pasteboard's clearContents()
+          pasteboard's writeObjects:{fileURL}
+        end run
       `;
 
-      execFile("osascript", ["-e", script], { timeout: 10000 }, (error) => {
+      execFile("osascript", ["-e", script, filePath], { timeout: 10000 }, (error) => {
         if (error) {
           console.error("AppleScript/ObjC error:", error);
-          // Fallback: Try the traditional AppleScript approach without Finder
-          const fallbackScript = `set the clipboard to (POSIX file "${safePath}") as alias`;
-          execFile("osascript", ["-e", fallbackScript], { timeout: 10000 }, (fallbackError) => {
+          // Fallback: Pass path as argument
+          const fallbackScript = `on run argv
+            set the clipboard to (POSIX file (item 1 of argv)) as alias
+          end run`;
+          execFile("osascript", ["-e", fallbackScript, filePath], { timeout: 10000 }, (fallbackError) => {
             if (fallbackError) {
               console.error("Fallback AppleScript error:", fallbackError);
-              // Last resort: Just copy the file path as text
               clipboard.writeText(filePath);
               resolve({ success: true, type: "text", path: filePath, message: "Copied file path as text" });
             } else {
@@ -479,6 +504,10 @@ app.whenReady().then(() => {
   ipcMain.handle("set-shortcut", async (event, newShortcut) => {
     if (!newShortcut || typeof newShortcut !== "string") {
       return { success: false, message: "Invalid shortcut format" };
+    }
+
+    if (!isValidAccelerator(newShortcut)) {
+      return { success: false, message: "Invalid accelerator format. Use modifiers like Ctrl, Alt, Shift with a key (e.g., Ctrl+Shift+P)" };
     }
 
     const result = registerShortcut(newShortcut);

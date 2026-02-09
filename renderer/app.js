@@ -508,7 +508,7 @@ function showPreview(asset) {
         </svg>
         <p style="font-size: 18px; margin-bottom: 8px;">${escapeHtml(asset.title)}</p>
         <p style="color: #888; font-size: 14px;">Preview not available for this file type</p>
-        <button onclick="downloadAsset(${JSON.stringify(asset).replace(/"/g, '&quot;')})" 
+        <button class="preview-download-btn" data-asset-id="${asset.id}"
                 style="margin-top: 20px; padding: 10px 24px; background: #22c55e; border: none; border-radius: 8px; color: #fff; cursor: pointer; font-size: 14px;">
           Download File
         </button>
@@ -517,6 +517,13 @@ function showPreview(asset) {
     }
 
     previewContent.innerHTML = content;
+
+    // Attach event listener for download button if present
+    const downloadBtn = previewContent.querySelector('.preview-download-btn');
+    if (downloadBtn) {
+        downloadBtn.addEventListener('click', () => downloadAsset(asset));
+    }
+
     previewModal.classList.add('active');
 }
 
