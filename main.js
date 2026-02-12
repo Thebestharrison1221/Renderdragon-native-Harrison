@@ -382,23 +382,23 @@ function copyFileToClipboard(filePath) {
       );
     } else if (process.platform === "darwin") {
       const { execFile } = require("child_process");
-      // Pass file path as argument to avoid AppleScript injection
-      // argv is accessed via "item 1 of argv" in the script
+      // Use Objective-C bridge to set NSFilenamesPboardType
+      // which Finder needs to recognize the file for Cmd+V paste
       const script = `
+        use framework "AppKit"
         on run argv
-          use framework "AppKit"
           set thePath to item 1 of argv
-          set fileURL to current application's NSURL's fileURLWithPath:thePath
-          set pasteboard to current application's NSPasteboard's generalPasteboard()
-          pasteboard's clearContents()
-          pasteboard's writeObjects:{fileURL}
+          set pb to current application's NSPasteboard's generalPasteboard()
+          pb's clearContents()
+          pb's declareTypes:{current application's NSFilenamesPboardType} owner:(missing value)
+          pb's setPropertyList:{thePath} forType:(current application's NSFilenamesPboardType)
         end run
       `;
 
       execFile("osascript", ["-e", script, filePath], { timeout: 10000 }, (error) => {
         if (error) {
           console.error("AppleScript/ObjC error:", error);
-          // Fallback: Pass path as argument
+          // Fallback: set clipboard to POSIX file as alias
           const fallbackScript = `on run argv
             set the clipboard to (POSIX file (item 1 of argv)) as alias
           end run`;
@@ -483,6 +483,11 @@ app.whenReady().then(() => {
 
       // Download to file directly
       await downloadToFile(url, tempPath);
+
+      // Verify the temp file actually exists before copying
+      if (!fs.existsSync(tempPath)) {
+        return { success: false, message: "Downloaded file not found" };
+      }
 
       // Copy file to clipboard (always as file drop for all types)
       return await copyFileToClipboard(tempPath);
