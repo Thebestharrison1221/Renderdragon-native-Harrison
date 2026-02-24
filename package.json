@@ -88,9 +88,7 @@
         },
         "nsis": {
             "oneClick": false,
-            "allowToChangeInstallationDirectory": true,
-            "installerIcon": "icon/icon.png",
-            "uninstallerIcon": "icon/icon.png"
+            "allowToChangeInstallationDirectory": true
         },
         "linux": {
             "target": [
