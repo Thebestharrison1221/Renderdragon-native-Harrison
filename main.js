@@ -14,11 +14,14 @@ const fs = require("fs");
 const https = require("https");
 const http = require("http");
 const os = require("os");
+const { autoUpdater } = require("electron-updater");
 
 let mainWindow = null;
 let tray = null;
 let isVisible = false;
 let currentShortcut = null;
+let updateInfo = null;
+let updateDownloaded = false;
 
 const TEMP_DIR = path.join(os.tmpdir(), "renderdragon-assets-temp");
 const CONFIG_DIR = path.join(app.getPath("userData"), "config");
@@ -284,6 +287,110 @@ function updateTrayMenu() {
   tray.setContextMenu(contextMenu);
 }
 
+// ===== Auto Update =====
+function setupAutoUpdater() {
+  autoUpdater.autoDownload = false;
+  autoUpdater.autoInstallOnAppQuit = true;
+
+  autoUpdater.on("checking-for-update", () => {
+    console.log("Checking for updates...");
+    sendUpdateStatus({ status: "checking" });
+  });
+
+  autoUpdater.on("update-available", (info) => {
+    console.log("Update available:", info.version);
+    updateInfo = info;
+    sendUpdateStatus({
+      status: "available",
+      version: info.version,
+      releaseDate: info.releaseDate,
+      releaseNotes: info.releaseNotes,
+    });
+  });
+
+  autoUpdater.on("update-not-available", (info) => {
+    console.log("No updates available");
+    sendUpdateStatus({ status: "not-available", version: info.version });
+  });
+
+  autoUpdater.on("download-progress", (progress) => {
+    console.log(`Download progress: ${progress.percent}%`);
+    sendUpdateStatus({
+      status: "downloading",
+      percent: Math.round(progress.percent),
+      transferred: progress.transferred,
+      total: progress.total,
+      bytesPerSecond: progress.bytesPerSecond,
+    });
+  });
+
+  autoUpdater.on("update-downloaded", (info) => {
+    console.log("Update downloaded:", info.version);
+    updateDownloaded = true;
+    sendUpdateStatus({
+      status: "downloaded",
+      version: info.version,
+    });
+  });
+
+  autoUpdater.on("error", (error) => {
+    console.error("Update error:", error);
+    sendUpdateStatus({
+      status: "error",
+      message: error.message,
+    });
+  });
+}
+
+function sendUpdateStatus(data) {
+  if (mainWindow && mainWindow.webContents) {
+    mainWindow.webContents.send("update-status", data);
+  }
+}
+
+async function checkForUpdates(silent = false) {
+  try {
+    if (!silent) {
+      sendUpdateStatus({ status: "checking" });
+    }
+    await autoUpdater.checkForUpdates();
+  } catch (error) {
+    console.error("Check for updates error:", error);
+    if (!silent) {
+      sendUpdateStatus({
+        status: "error",
+        message: error.message,
+      });
+    }
+  }
+}
+
+async function downloadUpdate() {
+  try {
+    sendUpdateStatus({ status: "downloading", percent: 0 });
+    await autoUpdater.downloadUpdate();
+  } catch (error) {
+    console.error("Download update error:", error);
+    sendUpdateStatus({
+      status: "error",
+      message: error.message,
+    });
+  }
+}
+
+function quitAndInstall() {
+  if (updateDownloaded) {
+    setImmediate(() => {
+      app.removeAllListeners("window-all-closed");
+      if (tray) {
+        tray.destroy();
+        tray = null;
+      }
+      autoUpdater.quitAndInstall(false, true);
+    });
+  }
+}
+
 // Helper function to download file to path
 function downloadToFile(url, filepath, options = {}) {
   const { timeout = 30000, maxSizeBytes = 500 * 1024 * 1024 } = options;
@@ -438,6 +545,14 @@ app.whenReady().then(() => {
   createWindow();
   createTray();
 
+  // Setup auto-updater
+  setupAutoUpdater();
+
+  // Check for updates on startup (silent)
+  if (app.isPackaged) {
+    setTimeout(() => checkForUpdates(true), 3000);
+  }
+
   // Load settings and register global shortcut
   const settings = loadSettings();
   const shortcutToRegister = settings.shortcut || getDefaultShortcut();
@@ -533,6 +648,29 @@ app.whenReady().then(() => {
       saveSettings(settings);
     }
     return result;
+  });
+
+  // Auto-update handlers
+  ipcMain.handle("check-for-updates", async () => {
+    await checkForUpdates(false);
+    return { success: true };
+  });
+
+  ipcMain.handle("download-update", async () => {
+    await downloadUpdate();
+    return { success: true };
+  });
+
+  ipcMain.handle("quit-and-install", () => {
+    quitAndInstall();
+    return { success: true };
+  });
+
+  ipcMain.handle("get-app-version", () => {
+    return {
+      version: app.getVersion(),
+      isPackaged: app.isPackaged
+    };
   });
 
   app.on("activate", () => {

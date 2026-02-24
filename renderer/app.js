@@ -82,13 +82,31 @@ const keybindResetBtn = document.getElementById('keybindResetBtn');
 const keybindHint = document.getElementById('keybindHint');
 const keybindInputWrapper = keybindInput?.parentElement;
 
+// Update elements
+const updateModal = document.getElementById('updateModal');
+const updateVersion = document.getElementById('updateVersion');
+const updateNotes = document.getElementById('updateNotes');
+const updateProgress = document.getElementById('updateProgress');
+const progressFill = document.getElementById('progressFill');
+const progressText = document.getElementById('progressText');
+const updateLaterBtn = document.getElementById('updateLaterBtn');
+const updateDownloadBtn = document.getElementById('updateDownloadBtn');
+const updateInstallBtn = document.getElementById('updateInstallBtn');
+const checkUpdateBtn = document.getElementById('checkUpdateBtn');
+const appVersionEl = document.getElementById('appVersion');
+
+// Update state
+let currentUpdateInfo = null;
+
 // ===== Initialize =====
 document.addEventListener('DOMContentLoaded', async () => {
     loadSettings();
     applySettings();
     await loadKeybindSettings();
+    await loadAppVersion();
     fetchAllAssets();
     setupEventListeners();
+    setupUpdateListener();
 });
 
 // ===== API Functions =====
@@ -866,6 +884,33 @@ function setupEventListeners() {
     if (keybindResetBtn) {
         keybindResetBtn.addEventListener('click', resetKeybind);
     }
+
+    // Auto-update
+    if (checkUpdateBtn) {
+        checkUpdateBtn.addEventListener('click', () => {
+            window.api.checkForUpdates();
+        });
+    }
+    if (updateLaterBtn) {
+        updateLaterBtn.addEventListener('click', hideUpdateModal);
+    }
+    if (updateDownloadBtn) {
+        updateDownloadBtn.addEventListener('click', () => {
+            window.api.downloadUpdate();
+        });
+    }
+    if (updateInstallBtn) {
+        updateInstallBtn.addEventListener('click', () => {
+            window.api.quitAndInstall();
+        });
+    }
+    if (updateModal) {
+        updateModal.addEventListener('click', (e) => {
+            if (e.target === updateModal) {
+                hideUpdateModal();
+            }
+        });
+    }
 }
 
 // ===== Utilities =====
@@ -1463,4 +1508,146 @@ function toggleSidebarCollapse() {
     if (mcsoundsSidebar) {
         mcsoundsSidebar.classList.toggle('collapsed');
     }
+}
+
+// ===== Auto Update =====
+async function loadAppVersion() {
+    try {
+        const info = await window.api.getAppVersion();
+        if (appVersionEl) {
+            appVersionEl.textContent = info.version;
+        }
+    } catch (error) {
+        console.error('Failed to get app version:', error);
+    }
+}
+
+function setupUpdateListener() {
+    if (window.api.onUpdateStatus) {
+        window.api.onUpdateStatus((data) => {
+            handleUpdateStatus(data);
+        });
+    }
+}
+
+function handleUpdateStatus(data) {
+    switch (data.status) {
+        case 'checking':
+            if (checkUpdateBtn) {
+                checkUpdateBtn.disabled = true;
+                checkUpdateBtn.innerHTML = `
+                    <svg class="spinner" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21 12a9 9 1 1 1-6.219-8.56"/>
+                    </svg>
+                    Checking...
+                `;
+            }
+            break;
+
+        case 'available':
+            currentUpdateInfo = data;
+            showUpdateModal(data);
+            resetCheckUpdateBtn();
+            break;
+
+        case 'not-available':
+            if (checkUpdateBtn) {
+                checkUpdateBtn.innerHTML = `
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M20 6 9 17l-5-5"/>
+                    </svg>
+                    Up to Date
+                `;
+                setTimeout(resetCheckUpdateBtn, 2000);
+            }
+            break;
+
+        case 'downloading':
+            if (updateProgress) {
+                updateProgress.style.display = 'flex';
+            }
+            if (progressFill) {
+                progressFill.style.width = `${data.percent}%`;
+            }
+            if (progressText) {
+                progressText.textContent = `${data.percent}%`;
+            }
+            if (updateDownloadBtn) {
+                updateDownloadBtn.disabled = true;
+                updateDownloadBtn.textContent = 'Downloading...';
+            }
+            break;
+
+        case 'downloaded':
+            if (updateProgress) {
+                updateProgress.style.display = 'none';
+            }
+            if (updateDownloadBtn) {
+                updateDownloadBtn.style.display = 'none';
+            }
+            if (updateInstallBtn) {
+                updateInstallBtn.style.display = 'inline-flex';
+            }
+            break;
+
+        case 'error':
+            console.error('Update error:', data.message);
+            resetCheckUpdateBtn();
+            hideUpdateModal();
+            break;
+    }
+}
+
+function showUpdateModal(data) {
+    if (updateModal) {
+        updateModal.classList.add('active');
+    }
+    if (updateVersion) {
+        updateVersion.textContent = `v${data.version}`;
+    }
+    if (updateNotes && data.releaseNotes) {
+        updateNotes.innerHTML = formatReleaseNotes(data.releaseNotes);
+    }
+    if (updateProgress) {
+        updateProgress.style.display = 'none';
+    }
+    if (updateDownloadBtn) {
+        updateDownloadBtn.style.display = 'inline-flex';
+        updateDownloadBtn.disabled = false;
+        updateDownloadBtn.textContent = 'Download';
+    }
+    if (updateInstallBtn) {
+        updateInstallBtn.style.display = 'none';
+    }
+}
+
+function hideUpdateModal() {
+    if (updateModal) {
+        updateModal.classList.remove('active');
+    }
+}
+
+function resetCheckUpdateBtn() {
+    if (checkUpdateBtn) {
+        checkUpdateBtn.disabled = false;
+        checkUpdateBtn.innerHTML = `
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+                <path d="M3 3v5h5"/>
+                <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/>
+                <path d="M16 16h5v5"/>
+            </svg>
+            Check for Updates
+        `;
+    }
+}
+
+function formatReleaseNotes(notes) {
+    if (typeof notes === 'string') {
+        return `<p>${escapeHtml(notes)}</p>`;
+    }
+    if (notes && notes.note) {
+        return `<p>${escapeHtml(notes.note)}</p>`;
+    }
+    return '';
 }

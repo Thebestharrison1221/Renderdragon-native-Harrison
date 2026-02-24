@@ -1,12 +1,16 @@
 {
     "name": "renderdragon-assets",
-    "version": "1.0.7",
+    "version": "1.0.8",
     "description": "Asset search application for RenderDragon resources",
     "main": "main.js",
     "scripts": {
         "start": "electron .",
         "dev": "electron . --enable-logging",
-        "build": "electron-builder"
+        "build": "electron-builder",
+        "build:win": "electron-builder --win",
+        "build:mac": "electron-builder --mac",
+        "build:linux": "electron-builder --linux",
+        "publish": "electron-builder --publish always"
     },
     "keywords": [
         "electron",
@@ -18,6 +22,10 @@
         "email": "contact@renderdragon.org"
     },
     "license": "MIT",
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/Renderdragonorg/Renderdragon-native.git"
+    },
     "devDependencies": {
         "electron": "^28.0.0",
         "electron-builder": "^26.7.0"
@@ -33,6 +41,11 @@
             "**/*",
             "!dist/**/*"
         ],
+        "publish": {
+            "provider": "github",
+            "owner": "Renderdragonorg",
+            "repo": "Renderdragon-native"
+        },
         "mac": {
             "target": [
                 {
@@ -51,14 +64,33 @@
                 }
             ],
             "category": "public.app-category.utilities",
-            "icon": "icon/icon.png"
+            "icon": "icon/icon.png",
+            "hardenedRuntime": true,
+            "gatekeeperAssess": false
         },
         "win": {
             "target": [
-                "nsis",
-                "zip"
+                {
+                    "target": "nsis",
+                    "arch": [
+                        "x64",
+                        "ia32"
+                    ]
+                },
+                {
+                    "target": "zip",
+                    "arch": [
+                        "x64"
+                    ]
+                }
             ],
             "icon": "icon/icon.png"
+        },
+        "nsis": {
+            "oneClick": false,
+            "allowToChangeInstallationDirectory": true,
+            "installerIcon": "icon/icon.png",
+            "uninstallerIcon": "icon/icon.png"
         },
         "linux": {
             "target": [
@@ -68,5 +100,8 @@
             "category": "Utility",
             "icon": "icon/icon.png"
         }
+    },
+    "dependencies": {
+        "electron-updater": "^6.8.3"
     }
 }
