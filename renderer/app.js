@@ -7,17 +7,18 @@ const CATEGORY_SHORTCUTS = {
     'a': 'animations',
     'f': 'fonts',
     'i': 'images',
-    'm': 'music',      // M for music (primary)
-    'c': 'mcicons',    // C for minecraft icons
+    'm': 'music',
+    'c': 'mcicons',
     'p': 'presets',
-    's': 'sfx'
+    's': 'sfx',
+    'b': 'mcsounds'
 };
 
 // ===== State =====
 let allAssets = [];
 let filteredAssets = [];
 let displayedCount = 0;
-let currentCategory = 'all';
+let currentCategory = 'animations';
 let isLoading = false;
 let searchTimeout = null;
 let focusedIndex = -1;
@@ -28,8 +29,8 @@ const DEFAULT_SETTINGS = {
     showPreviewBtn: true,
     showCopyBtn: true,
     showDownloadBtn: true,
-    defaultCategory: 'all',
-    gridColumns: 0 // 0 = auto
+    defaultCategory: 'animations',
+    gridColumns: 0
 };
 let settings = { ...DEFAULT_SETTINGS };
 
@@ -37,6 +38,11 @@ let settings = { ...DEFAULT_SETTINGS };
 let isRecordingKeybind = false;
 let pendingShortcut = null;
 let currentShortcutInfo = null;
+
+// MC Sounds sidebar state
+let mcsoundsSelectedPath = null;
+let mcsoundsExpandedNodes = new Set(['ambient', 'block', 'entity', 'event', 'item', 'mob', 'music', 'random', 'record', 'ui', 'weather']);
+let mcsoundsTreeData = null;
 
 // ===== DOM Elements =====
 const searchInput = document.getElementById('searchInput');
@@ -50,6 +56,12 @@ const previewModal = document.getElementById('previewModal');
 const previewContent = document.getElementById('previewContent');
 const previewClose = document.getElementById('previewClose');
 const goTopBtn = document.getElementById('goTopBtn');
+
+// MC Sounds sidebar elements
+const mainContainer = document.getElementById('mainContainer');
+const mcsoundsSidebar = document.getElementById('mcsoundsSidebar');
+const sidebarCollapseBtn = document.getElementById('sidebarCollapseBtn');
+const mcsoundsTree = document.getElementById('mcsoundsTree');
 
 // Settings elements
 const settingsBtn = document.getElementById('settingsBtn');
@@ -82,7 +94,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 // ===== API Functions =====
 async function fetchAllAssets() {
     try {
-        resultsCount.textContent = 'Loading assets...';
+        if (resultsCount) resultsCount.textContent = 'Loading assets...';
         const response = await fetch(`${API_BASE}/all`);
         const data = await response.json();
 
@@ -101,10 +113,21 @@ async function fetchAllAssets() {
         // Sort by title
         allAssets.sort((a, b) => a.title.localeCompare(b.title));
 
+        // Build mcsounds tree (wrapped in try-catch to prevent breaking main app)
+        try {
+            const mcsoundsAssets = allAssets.filter(a => a.category === 'mcsounds');
+            mcsoundsTreeData = buildMcsoundsTree(mcsoundsAssets);
+            renderMcsoundsTree();
+        } catch (treeError) {
+            console.error('Failed to build mcsounds tree:', treeError);
+        }
+
         filterAssets();
     } catch (error) {
         console.error('Failed to fetch assets:', error);
-        resultsCount.textContent = 'Failed to load assets. Check your connection.';
+        if (resultsCount) {
+            resultsCount.textContent = 'Failed to load assets. Check your connection.';
+        }
     }
 }
 
@@ -137,6 +160,13 @@ function filterAssets() {
             return false;
         }
 
+        // MC Sounds subcategory filter
+        if (category === 'mcsounds' && mcsoundsSelectedPath) {
+            if (!asset.subcategory || !asset.subcategory.startsWith(mcsoundsSelectedPath)) {
+                return false;
+            }
+        }
+
         // Search query filter
         if (query) {
             return asset.title.toLowerCase().includes(query) ||
@@ -157,7 +187,12 @@ function filterAssets() {
 }
 
 function updateResultsCount() {
-    const categoryText = currentCategory === 'all' ? 'all categories' : currentCategory;
+    let categoryText = currentCategory === 'all' ? 'all categories' : currentCategory;
+    
+    if (currentCategory === 'mcsounds' && mcsoundsSelectedPath) {
+        categoryText = `mcsounds / ${mcsoundsSelectedPath.replace(/\//g, ' / ')}`;
+    }
+    
     resultsCount.textContent = `${filteredAssets.length} assets in ${categoryText}`;
 }
 
@@ -476,12 +511,37 @@ function showPreview(asset) {
     }
     // Audio
     else if (['mp3', 'wav', 'ogg', 'flac', 'm4a'].includes(ext)) {
+        const sizeText = formatSize(asset.size);
         content = `
-      <div style="text-align: center; color: #fff;">
-        <p style="margin-bottom: 20px; font-size: 18px;">${escapeHtml(asset.title)}</p>
-        <audio src="${asset.url}" controls autoplay style="width: 100%;"></audio>
-      </div>
-    `;
+            <div class="audio-preview-modal">
+                <div class="audio-preview-icon">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="80" height="80" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M9 18V5l12-2v13"></path>
+                        <circle cx="6" cy="18" r="3"></circle>
+                        <circle cx="18" cy="16" r="3"></circle>
+                    </svg>
+                </div>
+                <div class="audio-preview-info">
+                    <h3 class="audio-preview-title">${escapeHtml(asset.title)}</h3>
+                    <p class="audio-preview-meta">${ext.toUpperCase()} • ${sizeText}</p>
+                </div>
+                <audio id="previewAudioPlayer" src="${asset.url}" controls autoplay></audio>
+                <div class="audio-waveform-visual">
+                    <div class="waveform-bar"></div>
+                    <div class="waveform-bar"></div>
+                    <div class="waveform-bar"></div>
+                    <div class="waveform-bar"></div>
+                    <div class="waveform-bar"></div>
+                    <div class="waveform-bar"></div>
+                    <div class="waveform-bar"></div>
+                    <div class="waveform-bar"></div>
+                    <div class="waveform-bar"></div>
+                    <div class="waveform-bar"></div>
+                    <div class="waveform-bar"></div>
+                    <div class="waveform-bar"></div>
+                </div>
+            </div>
+        `;
     }
     // Fonts - show full preview with sample text
     else if (['ttf', 'otf', 'woff', 'woff2'].includes(ext)) {
@@ -522,6 +582,23 @@ function showPreview(asset) {
     const downloadBtn = previewContent.querySelector('.preview-download-btn');
     if (downloadBtn) {
         downloadBtn.addEventListener('click', () => downloadAsset(asset));
+    }
+
+    // Audio player waveform animation
+    const audioPlayer = previewContent.querySelector('#previewAudioPlayer');
+    const waveformBars = previewContent.querySelectorAll('.audio-waveform-visual .waveform-bar');
+    if (audioPlayer && waveformBars.length > 0) {
+        audioPlayer.addEventListener('play', () => {
+            waveformBars.forEach(bar => bar.style.animationPlayState = 'running');
+        });
+        audioPlayer.addEventListener('pause', () => {
+            waveformBars.forEach(bar => bar.style.animationPlayState = 'paused');
+        });
+        audioPlayer.addEventListener('ended', () => {
+            waveformBars.forEach(bar => bar.style.animationPlayState = 'paused');
+        });
+        // Start with animation running since autoplay
+        waveformBars.forEach(bar => bar.style.animationPlayState = 'running');
     }
 
     previewModal.classList.add('active');
@@ -706,9 +783,21 @@ function setupEventListeners() {
                 searchInput.value = rawQuery.slice(shortcutMatch[0].length);
             }
 
+            // Show/hide mcsounds sidebar
+            if (currentCategory === 'mcsounds') {
+                showMcsoundsSidebar();
+            } else {
+                hideMcsoundsSidebar();
+            }
+
             filterAssets();
         });
     });
+
+    // Sidebar collapse button
+    if (sidebarCollapseBtn) {
+        sidebarCollapseBtn.addEventListener('click', toggleSidebarCollapse);
+    }
 
     // Infinite scroll and go-to-top button visibility
     assetsContainer.addEventListener('scroll', () => {
@@ -1205,4 +1294,173 @@ function updateKeybindHint() {
     const defaultDisplay = formatShortcutForDisplay(currentShortcutInfo.defaultShortcut);
     keybindHint.textContent = `Default: ${defaultDisplay}`;
     keybindHint.className = 'keybind-hint';
+}
+
+// ===== MC Sounds Tree =====
+function buildMcsoundsTree(assets) {
+    const tree = {};
+    
+    assets.forEach(asset => {
+        if (!asset.subcategory) return;
+        
+        const parts = asset.subcategory.split('/');
+        let current = tree;
+        
+        parts.forEach((part, index) => {
+            if (!current[part]) {
+                current[part] = {
+                    __count: 0,
+                    __children: {}
+                };
+            }
+            current[part].__count++;
+            current = current[part].__children;
+        });
+    });
+    
+    return tree;
+}
+
+function renderMcsoundsTree() {
+    if (!mcsoundsTree || !mcsoundsTreeData || Object.keys(mcsoundsTreeData).length === 0) {
+        if (mcsoundsTree) mcsoundsTree.innerHTML = '';
+        return;
+    }
+    
+    const sortedKeys = Object.keys(mcsoundsTreeData).sort((a, b) => {
+        const countA = mcsoundsTreeData[a].__count;
+        const countB = mcsoundsTreeData[b].__count;
+        return countB - countA;
+    });
+    
+    let html = `
+        <div class="tree-all-btn ${mcsoundsSelectedPath === null ? 'selected' : ''}" data-path="">
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect width="7" height="7" x="3" y="3" rx="1"></rect>
+                <rect width="7" height="7" x="14" y="3" rx="1"></rect>
+                <rect width="7" height="7" x="14" y="14" rx="1"></rect>
+                <rect width="7" height="7" x="3" y="14" rx="1"></rect>
+            </svg>
+            <span class="tree-label">All Sounds</span>
+        </div>
+    `;
+    
+    sortedKeys.forEach(key => {
+        html += renderTreeNode(key, mcsoundsTreeData[key], '', 0);
+    });
+    
+    mcsoundsTree.innerHTML = html;
+    attachTreeEventListeners();
+}
+
+function renderTreeNode(name, node, parentPath, depth) {
+    const currentPath = parentPath ? `${parentPath}/${name}` : name;
+    const hasChildren = Object.keys(node.__children).length > 0;
+    const isExpanded = mcsoundsExpandedNodes.has(currentPath);
+    const isSelected = mcsoundsSelectedPath === currentPath;
+    
+    const depthClass = depth === 0 ? '' : depth === 1 ? 'child' : 'grandchild';
+    
+    let html = `
+        <div class="tree-node ${depthClass}">
+            <div class="tree-node-header ${isSelected ? 'selected' : ''}" data-path="${currentPath}">
+                <span class="tree-expand-icon ${isExpanded ? 'expanded' : ''} ${!hasChildren ? 'hidden' : ''}">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="m9 18 6-6-6-6"/>
+                    </svg>
+                </span>
+                <svg class="tree-folder-icon" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/>
+                </svg>
+                <span class="tree-label">${formatTreeLabel(name)}</span>
+                <span class="tree-count">${node.__count}</span>
+            </div>
+    `;
+    
+    if (hasChildren) {
+        const sortedChildren = Object.keys(node.__children).sort((a, b) => {
+            const countA = node.__children[a].__count;
+            const countB = node.__children[b].__count;
+            return countB - countA;
+        });
+        
+        html += `<div class="tree-children ${isExpanded ? 'expanded' : ''}">`;
+        sortedChildren.forEach(childKey => {
+            html += renderTreeNode(childKey, node.__children[childKey], currentPath, depth + 1);
+        });
+        html += '</div>';
+    }
+    
+    html += '</div>';
+    return html;
+}
+
+function formatTreeLabel(name) {
+    return name
+        .split('_')
+        .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+        .join(' ');
+}
+
+function attachTreeEventListeners() {
+    document.querySelectorAll('.tree-node-header').forEach(header => {
+        header.addEventListener('click', (e) => {
+            const path = header.dataset.path;
+            const expandIcon = header.querySelector('.tree-expand-icon');
+            const hasChildren = !expandIcon.classList.contains('hidden');
+            
+            if (hasChildren && e.target.closest('.tree-expand-icon')) {
+                toggleTreeNode(path);
+            } else {
+                selectTreeNode(path);
+            }
+        });
+    });
+    
+    document.querySelectorAll('.tree-all-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            selectTreeNode(null);
+        });
+    });
+}
+
+function toggleTreeNode(path) {
+    if (mcsoundsExpandedNodes.has(path)) {
+        mcsoundsExpandedNodes.delete(path);
+    } else {
+        mcsoundsExpandedNodes.add(path);
+    }
+    renderMcsoundsTree();
+}
+
+function selectTreeNode(path) {
+    mcsoundsSelectedPath = path;
+    filterAssets();
+    renderMcsoundsTree();
+}
+
+function showMcsoundsSidebar() {
+    if (mcsoundsSidebar) {
+        mcsoundsSidebar.classList.add('visible');
+    }
+    if (mainContainer) {
+        mainContainer.classList.add('with-sidebar');
+    }
+}
+
+function hideMcsoundsSidebar() {
+    if (mcsoundsSidebar) {
+        mcsoundsSidebar.classList.remove('visible');
+        mcsoundsSidebar.classList.remove('collapsed');
+    }
+    if (mainContainer) {
+        mainContainer.classList.remove('with-sidebar');
+    }
+    mcsoundsSelectedPath = null;
+}
+
+function toggleSidebarCollapse() {
+    if (mcsoundsSidebar) {
+        mcsoundsSidebar.classList.toggle('collapsed');
+    }
 }

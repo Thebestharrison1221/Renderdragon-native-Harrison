@@ -11,8 +11,26 @@
 </head>
 
 <body>
-    <div class="container">
-        <!-- Search Header -->
+    <div class="container" id="mainContainer">
+        <!-- MC Sounds Sidebar -->
+        <aside class="mcsounds-sidebar" id="mcsoundsSidebar">
+            <div class="sidebar-header">
+                <span class="sidebar-title">Categories</span>
+                <button class="sidebar-collapse-btn" id="sidebarCollapseBtn" title="Collapse sidebar">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
+                        stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="m15 18-6-6 6-6"/>
+                    </svg>
+                </button>
+            </div>
+            <div class="sidebar-content" id="sidebarContent">
+                <div class="tree-container" id="mcsoundsTree"></div>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <div class="main-content">
+            <!-- Search Header -->
         <div class="search-header">
             <div class="search-box">
                 <svg class="search-icon" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24"
@@ -42,7 +60,7 @@
 
             <!-- Category Filters -->
             <div class="category-filters">
-                <button class="filter-btn active" data-category="all">
+                <button class="filter-btn" data-category="all">
                     <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none"
                         stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <rect width="7" height="7" x="3" y="3" rx="1"></rect>
@@ -52,7 +70,7 @@
                     </svg>
                     All
                 </button>
-                <button class="filter-btn" data-category="animations">
+                <button class="filter-btn active" data-category="animations">
                     <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none"
                         stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <path d="m22 8-6 4 6 4V8Z"></path>
@@ -88,6 +106,15 @@
                         <path d="M17 17h.01"></path>
                     </svg>
                     MC Icons
+                </button>
+                <button class="filter-btn" data-category="mcsounds">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none"
+                        stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M9 18V5l12-2v13"></path>
+                        <circle cx="6" cy="18" r="3"></circle>
+                        <circle cx="18" cy="16" r="3"></circle>
+                    </svg>
+                    MC Sounds
                 </button>
                 <button class="filter-btn" data-category="music">
                     <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none"
@@ -136,6 +163,7 @@
                 Loading more...
             </div>
         </div>
+        </div>
     </div>
 
     <!-- Settings Modal -->
@@ -182,10 +210,11 @@
                     <p class="settings-description">Category to show when app starts</p>
                     <select id="defaultCategory" class="settings-select">
                         <option value="all">All</option>
-                        <option value="animations">Animations</option>
+                        <option value="animations" selected>Animations</option>
                         <option value="fonts">Fonts</option>
                         <option value="images">Images</option>
                         <option value="mcicons">MC Icons</option>
+                        <option value="mcsounds">MC Sounds</option>
                         <option value="music">Music</option>
                         <option value="presets">Presets</option>
                         <option value="sfx">SFX</option>
