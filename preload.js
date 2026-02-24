@@ -10,5 +10,15 @@ contextBridge.exposeInMainWorld('api', {
     getShortcut: () => ipcRenderer.invoke('get-shortcut'),
     setShortcut: (shortcut) => ipcRenderer.invoke('set-shortcut', shortcut),
     resetShortcut: () => ipcRenderer.invoke('reset-shortcut'),
-    platform: process.platform
+    platform: process.platform,
+    // Auto-update
+    checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
+    downloadUpdate: () => ipcRenderer.invoke('download-update'),
+    quitAndInstall: () => ipcRenderer.invoke('quit-and-install'),
+    getAppVersion: () => ipcRenderer.invoke('get-app-version'),
+    onUpdateStatus: (callback) => {
+        const handler = (event, data) => callback(data);
+        ipcRenderer.on('update-status', handler);
+        return () => ipcRenderer.removeListener('update-status', handler);
+    }
 });
